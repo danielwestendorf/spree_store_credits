@@ -5,6 +5,7 @@ module Spree
     let(:user) { create(:user) }
     let!(:store_credit) { create(:store_credit, user: user, amount: 45.00, remaining_amount: 45.00)}
     let(:line_item) { mock_model(LineItem, :variant => double('variant'), :quantity => 5, :price => 10) }
+    let(:line_item2) {create(:line_item)}
     let(:order) { create(:order, user: user) }
 
     before do
@@ -44,12 +45,12 @@ module Spree
         order.store_credit_amount.should == 0.0
       end
 
-      it "should update order totals if credit is applied" do
-        pending
-        order.should_receive(:update_totals).twice
-        order.store_credit_amount = 5.0
-        order.save
-      end
+      # it "should update order totals if credit is applied" do
+      #   pending
+      #   order.should_receive(:update_totals).twice
+      #   order.store_credit_amount = 5.0
+      #   order.save
+      # end
 
       it "should update payment amount if credit is applied" do
         order.stub_chain(:pending_payments, :first => double('payment', :payment_method => double('payment method', :payment_profiles_supported? => true)))
@@ -139,14 +140,14 @@ module Spree
         order.send(:consume_users_credit)
       end
 
-      it "should call consume_users_credit after transition to complete" do
-        pending
-        new_order = Order.new()
-        new_order.state = :confirm
-        new_order.should_receive(:consume_users_credit).at_least(1).times
-        new_order.next!
-        new_order.state.should == 'complete'
-      end
+      # it "should call consume_users_credit after transition to complete" do
+      #   pending
+      #   new_order = Order.new()
+      #   new_order.state = :confirm
+      #   new_order.should_receive(:consume_users_credit).at_least(1).times
+      #   new_order.next!
+      #   new_order.state.should == 'complete'
+      # end
 
       # regression
       it 'should do nothing on guest checkout' do
@@ -163,6 +164,9 @@ module Spree
       let!(:payment) { create(:payment, order: order, amount: 40, state: 'completed')}
 
       before do
+        order.shipments.each do |shipment|
+          adjustment = shipment.adjustments.create!(amount: shipment.final_price, label: 'free shipping!', eligible: true)
+        end
         order.adjustments.store_credits.create(label: I18n.t(:store_credit) , amount: -10, eligible: true)
         order.update!
       end
@@ -182,18 +186,19 @@ module Spree
 
         it "should destroy all store credit adjustments" do
           order.adjustment_total.should eq(-10)
-          order.total.should eq(40)
+          order.total.should eq(140)
           order.send(:ensure_sufficient_credit)
           order.adjustments.store_credits.size.should == 0
           order.reload
-          order.adjustment_total.should eq(0)
+          order.adjustment_total.to_i.should eq(0)
+          order.total.should eq(150)
         end
 
         it "should update the order's payment state" do
-          order.payment_state.should eq('paid')
+          order.payment_required?.should be_falsey
           order.send(:ensure_sufficient_credit)
           order.reload
-          order.payment_state.should eq('balance_due')
+          order.outstanding_balance?.should be_truthy
         end
       end
 
@@ -202,8 +207,9 @@ module Spree
     context "process_payments!" do
 
       it "should return false when total is greater than zero and payments are empty" do
+        order.stub(:total => 50)
         order.stub(:pending_payments => [])
-        order.process_payments!.should be_false
+        order.process_payments!.should be_falsey
       end
 
       it "should process payment when total is zero and payments is not empty" do
@@ -224,14 +230,14 @@ module Spree
         before { reset_spree_preferences { |config| config.use_store_credit_minimum = 100 } }
 
         it "should be invalid" do
-          order.valid?.should be_false
+          order.valid?.should be_falsey
           order.errors.should_not be_nil
         end
 
         it "should be valid when store_credit_amount is 0" do
         order.instance_variable_set(:@store_credit_amount, 0)
           order.stub(:item_total => 50)
-          order.valid?.should be_true
+          order.valid?.should be_truthy
           order.errors.count.should == 0
         end
 
@@ -241,7 +247,7 @@ module Spree
         before { reset_spree_preferences { |config| config.use_store_credit_minimum = 10 } }
 
         it "should be valid when item total is greater than limit" do
-          order.valid?.should be_true
+          order.valid?.should be_truthy
           order.errors.count.should == 0
         end
 

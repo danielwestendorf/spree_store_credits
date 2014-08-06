@@ -8,6 +8,7 @@ require 'rspec/rails'
 require 'factory_girl'
 require 'spree/testing_support/url_helpers'
 require 'database_cleaner'
+require 'rspec/active_model/mocks'
 
 # Requires supporting ruby files with custom matchers and macros, etc,
 # in spec/support/ and its subdirectories.
@@ -27,6 +28,9 @@ require 'ffaker'
 RSpec.configure do |config|
   config.color = true
   config.mock_with :rspec
+
+  config.expose_current_running_example_as :example
+  config.infer_spec_type_from_file_location!
 
   config.fixture_path = "#{::Rails.root}/spec/fixtures"
 
